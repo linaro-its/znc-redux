@@ -1,0 +1,45 @@
+name: PushAction
+
+on:
+  push:
+    branches: [ main, master ]
+    paths-ignore:
+      - .github/workflows/pullrequest.yml
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: [ self-hosted ]
+    steps:
+      - name: Cancel previous runs
+        uses: n1hility/cancel-previous-runs@v2
+        with: 
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Fetch git repository
+        uses: actions/checkout@v2
+        with:
+          path: container-repo
+
+      - name: Build container image
+        run: |
+          cd $GITHUB_WORKSPACE/container-repo
+          docker build --force-rm -t "linaroits/znc-redux" .
+
+      - name: Determine image tag
+        run: |
+          IMAGE_TAG=$(docker images znc | tail -1 | awk '{print $2}')
+          echo "IMAGE_TAG=$IMAGE_TAG" >> $GITHUB_ENV
+
+      - name: Publish container image
+        run: |
+          docker tag linaroits/znc-redux:latest linaroits/znc-redux:$IMAGE_TAG
+          docker login -u "${{ secrets.DOCKER_USER }}" -p "${{ secrets.DOCKER_PASSWORD }}"
+          docker push linaroits/znc-redux:latest
+          docker push linaroits/znc-redux:$IMAGE_TAG
+
+      - name: Clean up images
+        run: |
+          docker rmi linaroits/znc-redux:latest
+          docker rmi linaroits/znc-redux:$IMAGE_TAG
+          docker rmi znc:$IMAGE_TAG
